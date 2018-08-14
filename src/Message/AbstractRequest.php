@@ -79,45 +79,30 @@ abstract class AbstractRequest extends \Omnipay\Common\Message\AbstractRequest
     public function sendData($data)
     {
         $apiPasscode = str_contains($this->getEndpoint(), '/profiles') ? $this->getProfilePasscode() : $this->getTransactionPasscode();
-        $header = base64_encode($this->getMerchantId() . ':' . $apiPasscode);
-
-        // Don't throe exceptions for 4xx errors
-        $this->httpClient->getEventDispatcher()->addListener(
-            'request.error',
-            function ($event) {
-                if($event['response']->isClientError()) {
-                    $event->stopPropagation();
-                }
-            }
-        );
+    
+        $headers = [
+            'Content-Type' => 'application/json',
+            'Authorization' => 'Passcode ' . base64_encode($this->getMerchantId() . ':' . $apiPasscode)
+        ];
 
         if(!empty($data)) {
-            $httpRequest = $this->httpClient->createRequest(
-                $this->getHttpMethod(),
-                $this->getEndpoint(),
-                null,
-                $data
-            );
+            $httpResponse = $this->httpClient->request($this->getHttpMethod(), $this->getEndpoint(), $headers, $data);
         }
         else {
-            $httpRequest = $this->httpClient->createRequest(
-                $this->getHttpMethod(),
-                $this->getEndpoint()
-            );
+            $httpResponse = $this->httpClient->request($this->getHttpMethod(), $this->getEndpoint(), $headers);
+        }
+    
+        try {
+            $jsonRes = json_decode($httpResponse->getBody()->getContents(), true);
+        }
+        catch (\Exception $e){
+            info('Guzzle response : ', [$httpResponse]);
+            $res = [];
+            $res['resptext'] = 'Oops! something went wrong, Try again after sometime.';
+            return $this->response = new Response($this, $res);
         }
 
-        $httpResponse = $httpRequest
-            ->setHeader(
-                'Content-Type',
-                'application/json'
-            )
-            ->setHeader(
-                'Authorization',
-                'Passcode ' . $header
-            )
-            ->send();
-
-        return $this->response = new Response($this, $httpResponse->json());
+        return $this->response = new Response($this, $jsonRes);
     }
 }
 
